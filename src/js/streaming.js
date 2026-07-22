@@ -98,6 +98,11 @@
     const actions = document.createElement("div");
     actions.className = "channel-actions";
     actions.append(
+      actionButton("Watch", async () => {
+        const advertised = new URL(channel.hlsUrl);
+        const playbackUrl = new URL(`${advertised.pathname}${advertised.search}`, window.location.origin).toString();
+        window.dispatchEvent(new CustomEvent("navuryx:play", { detail: { url: playbackUrl, name: channel.name, group: channel.group } }));
+      }),
       actionButton("Copy URL", async () => {
         await navigator.clipboard.writeText(channel.hlsUrl);
         notify("HLS URL copied");

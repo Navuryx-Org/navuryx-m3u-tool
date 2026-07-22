@@ -3,6 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
+const dns = require("dns").promises;
+const net = require("net");
 const { spawn, spawnSync } = require("child_process");
 
 const projectRoot = path.join(__dirname, "..");
@@ -24,8 +26,7 @@ const publicFiles = new Set([
   "/js/m3u.js",
   "/js/app.js",
   "/js/streaming.js",
-  "/manifest.webmanifest",
-  "/sw.js",
+  "/js/player.js",
   "/assets/icons/icon-192.png",
   "/assets/icons/icon-512.png"
 ]);
@@ -193,7 +194,7 @@ function sendHeaders(response, status, type, extra) {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' http: https:; media-src 'self' http: https: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' http: https:; media-src 'self' http: https: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
     ...(extra || {})
   });
 }
@@ -428,6 +429,55 @@ function removeChannel(id) {
   return true;
 }
 
+function isPrivateAddress(address) {
+  if (net.isIP(address) === 4) {
+    const parts = address.split(".").map(Number);
+    const [a, b] = parts;
+    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+  }
+  if (net.isIP(address) === 6) {
+    const normalized = address.toLowerCase();
+    return normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("::ffff:127.") || normalized.startsWith("::ffff:10.") || normalized.startsWith("::ffff:192.168.");
+  }
+  return true;
+}
+
+async function validateRemotePlaylistUrl(value) {
+  const parsed = new URL(String(value || "").trim());
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error("Use an HTTP or HTTPS URL without embedded credentials");
+  }
+  if (parsed.hostname.toLowerCase() === "localhost") {
+    throw new Error("Local network addresses are not accepted by the playlist proxy");
+  }
+  const records = await dns.lookup(parsed.hostname, { all: true });
+  if (!records.length || records.some((record) => isPrivateAddress(record.address))) {
+    throw new Error("Private or reserved network addresses are not accepted by the playlist proxy");
+  }
+  return parsed;
+}
+
+async function fetchRemotePlaylist(value) {
+  const parsed = await validateRemotePlaylistUrl(value);
+  const response = await fetch(parsed, {
+    headers: { Accept: "audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain,*/*" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > 10 * 1024 * 1024) {
+    throw new Error("The remote playlist is larger than 10 MB");
+  }
+  const text = await response.text();
+  if (Buffer.byteLength(text) > 10 * 1024 * 1024) {
+    throw new Error("The remote playlist is larger than 10 MB");
+  }
+  return text;
+}
+
 function playlistText(request) {
   const base = getAdvertisedBaseUrl(request);
   const entries = channels.filter((channel) => ["ready", "streaming"].includes(channel.status));
@@ -459,6 +509,15 @@ async function handleApi(request, response, pathname, parsedUrl) {
   if (request.method === "OPTIONS") {
     sendHeaders(response, 204, "text/plain; charset=utf-8");
     response.end();
+    return true;
+  }
+  if (pathname === "/api/player/playlist" && request.method === "GET") {
+    try {
+      const text = await fetchRemotePlaylist(parsedUrl.searchParams.get("url"));
+      sendText(response, 200, text, "audio/x-mpegurl; charset=utf-8");
+    } catch (error) {
+      sendJson(response, 400, { error: error.message || "The remote playlist could not be loaded" });
+    }
     return true;
   }
   if (pathname === "/api/status" && request.method === "GET") {

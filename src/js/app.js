@@ -6,7 +6,6 @@
     sourceText: "",
     correctedText: "",
     analysis: null,
-    deferredInstallPrompt: null,
     toastTimer: null
   };
 
@@ -33,7 +32,6 @@
     repairButton: document.getElementById("repairButton"),
     downloadButton: document.getElementById("downloadButton"),
     copyButton: document.getElementById("copyButton"),
-    installButton: document.getElementById("installButton"),
     outputSection: document.getElementById("outputSection"),
     resultState: document.getElementById("resultState"),
     entryCount: document.getElementById("entryCount"),
@@ -387,29 +385,15 @@
     elements.downloadButton.addEventListener("click", () => void downloadCorrected());
     elements.copyButton.addEventListener("click", copyOutput);
     elements.entrySearch.addEventListener("input", () => renderEntries(state.analysis ? state.analysis.entries : []));
-    elements.installButton.addEventListener("click", async () => {
-      if (!state.deferredInstallPrompt) {
-        return;
-      }
-      state.deferredInstallPrompt.prompt();
-      await state.deferredInstallPrompt.userChoice;
-      state.deferredInstallPrompt = null;
-      elements.installButton.hidden = true;
-    });
-    window.addEventListener("beforeinstallprompt", (event) => {
-      event.preventDefault();
-      state.deferredInstallPrompt = event;
-      elements.installButton.hidden = false;
-    });
   }
 
-  function registerServiceWorker() {
-    if ("serviceWorker" in navigator && location.protocol !== "file:") {
-      navigator.serviceWorker.register("sw.js").catch(() => null);
+  function removeServiceWorkers() {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => registrations.forEach((registration) => registration.unregister())).catch(() => null);
     }
   }
 
   bindEvents();
   renderAnalysis(null);
-  registerServiceWorker();
+  removeServiceWorkers();
 })();
