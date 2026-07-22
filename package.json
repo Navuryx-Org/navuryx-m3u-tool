@@ -1,6 +1,6 @@
 {
   "name": "navuryx-m3u-tool-website",
-  "version": "2.2.0",
+  "version": "2.4.0",
   "private": true,
   "description": "Navuryx Vercel-connected HLS streaming host and M3U toolkit",
   "scripts": {

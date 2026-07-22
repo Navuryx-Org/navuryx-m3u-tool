@@ -1,142 +1,120 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1" name="viewport"/>
-<meta content="#0b1020" name="theme-color"/>
-<meta content="Navuryx hosts authorized HLS channels, plays M3U playlists, and repairs M3U or M3U8 files." name="description"/>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f3a5f">
+<meta name="description" content="Create HLS channels, repair playlists, download M3U files, and watch M3U, M3U8, MP4, and supported live sources.">
 <title>Navuryx M3U Tool</title>
-
-<link href="css/styles.css" rel="stylesheet"/>
+<link href="css/styles.css" rel="stylesheet">
 </head>
 <body>
 <header class="topbar">
 <div class="topbar-inner">
-<a aria-label="Navuryx home" class="brand" href="#channels">
-<span aria-hidden="true" class="brand-mark">N</span>
+<a class="brand" href="#channels" aria-label="Navuryx home">
 <span class="brand-copy"><strong>Navuryx</strong><small>M3U Tool</small></span>
 </a>
-<nav aria-label="Workspace sections" class="main-nav workspace-nav"><button aria-controls="channels" aria-selected="true" class="workspace-nav-button active" data-section-target="channels" type="button">1 Create</button><button aria-controls="playlist-tools" aria-selected="false" class="workspace-nav-button" data-section-target="playlist-tools" type="button">2 Download</button><button aria-controls="player" aria-selected="false" class="workspace-nav-button" data-section-target="player" type="button">3 Watch</button></nav>
-<span class="host-status">M3U / M3U8 workspace</span>
+<nav class="workspace-nav" aria-label="Workspace sections">
+<button class="workspace-nav-button active" data-section-target="channels" aria-controls="channels" aria-selected="true" type="button">Create</button>
+<button class="workspace-nav-button" data-section-target="playlist-tools" aria-controls="playlist-tools" aria-selected="false" type="button">Download</button>
+<button class="workspace-nav-button" data-section-target="player" aria-controls="player" aria-selected="false" type="button">Watch</button>
+</nav>
 </div>
 </header>
 <main>
-
-<section aria-label="HLS channel management" class="page-section workspace-section active" id="channels">
+<section class="page-section workspace-section active" id="channels" aria-label="Channel creation">
 <div class="section-header">
-<div><span class="section-kicker">Create</span><h2>Create channels</h2></div>
-<span class="status-badge" id="ffmpegState">Checking FFmpeg</span>
+<div><span class="section-kicker">Create</span><h1>Create a channel</h1><p>Convert an authorized media source into a playable HLS channel.</p></div>
+<span id="ffmpegState" hidden></span>
 </div>
-<div class="two-column-grid">
-<article class="panel">
-<div class="panel-header"><div><h3>Add channel</h3><p>Create an HLS endpoint from an authorized source.</p></div></div>
+<div class="create-layout">
+<article class="panel create-panel">
+<div class="panel-header"><div><h2>Source</h2><p>Choose where the video comes from.</p></div></div>
 <div class="panel-body form-stack">
 <div class="field-grid">
-<label class="field"><span>Channel name</span><input id="streamName" maxlength="120" placeholder="My Channel" type="text"/></label>
-<label class="field"><span>Group</span><input id="streamGroup" maxlength="80" type="text" value="Navuryx"/></label>
+<label class="field"><span>Channel name</span><input id="streamName" maxlength="120" placeholder="Filled automatically" type="text"></label>
+<label class="field"><span>Group</span><input id="streamGroup" maxlength="80" value="Navuryx" type="text"></label>
 </div>
-<div aria-label="Media source" class="segmented-control" role="tablist">
-<button aria-selected="true" class="segment active" id="mediaFileTab" role="tab" type="button">Media file</button>
-<button aria-selected="false" class="segment" id="liveInputTab" role="tab" type="button">Live input</button>
+<div class="segmented-control source-mode-control" role="tablist" aria-label="Media source">
+<button class="segment active" id="mediaFileTab" role="tab" aria-selected="true" type="button">File</button>
+<button class="segment" id="liveInputTab" role="tab" aria-selected="false" type="button">URL</button>
 </div>
 <div id="mediaFilePanel">
 <label class="file-picker" for="mediaFileInput">
-<input accept="video/*,.mkv,.m2ts,.ts" hidden="" id="mediaFileInput" type="file"/>
-<span aria-hidden="true" class="file-picker-icon">+</span>
-<span><strong id="mediaFileLabel">Select a media file</strong><small>MP4, MOV, MKV, WebM, AVI, TS, or M2TS</small></span>
+<input id="mediaFileInput" accept="video/*,.mkv,.m2ts,.ts" hidden type="file">
+<span class="file-picker-icon" aria-hidden="true">+</span>
+<span><strong id="mediaFileLabel">Choose a video file</strong><small>MP4, MOV, MKV, WebM, AVI, TS, or M2TS</small></span>
 </label>
 </div>
-<div hidden="" id="liveInputPanel">
-<label class="field"><span>Authorized live input URL</span><input id="liveSourceUrl" maxlength="2048" placeholder="rtmp://server/app/key or https://host/live.m3u8" type="url"/></label>
+<div id="liveInputPanel" hidden>
+<label class="field"><span>Media or site URL</span><input id="liveSourceUrl" maxlength="2048" placeholder="YouTube, Twitch, MP4, M3U8, RTMP, RTSP, or SRT URL" type="url"></label>
+<p class="field-note" id="sourceUrlNote">Direct media is used immediately. Supported site links are resolved automatically.</p>
 </div>
-<button class="button button-primary button-block" id="createStreamButton" type="button">Create HLS channel</button>
-<p class="helper-text">Use only media and feeds you are authorized to stream.</p>
+<button class="button button-primary button-block" id="createStreamButton" type="button">Create channel</button>
+<p class="legal-note">Only stream media you own or are authorized to distribute.</p>
 </div>
 </article>
-<article class="panel">
-<div class="panel-header"><div><h3>Master playlist</h3><p>Use this M3U URL in a compatible player.</p></div><span class="count-badge" id="channelTotal">0 channels</span></div>
+<article class="panel playlist-card">
+<div class="panel-header"><div><h2>Playlist</h2><p>Your active channels in one M3U URL.</p></div><span class="count-badge" id="channelTotal">0 channels</span></div>
 <div class="panel-body form-stack">
-<label class="field"><span>Master M3U URL</span><div class="input-action"><input id="masterPlaylistUrl" readonly="" type="text"/><button class="button button-secondary" id="copyPlaylistUrl" type="button">Copy</button></div></label>
-<button class="button button-secondary button-block" id="watchMasterPlaylist" type="button">Open in player</button>
+<label class="field"><span>Master playlist URL</span><div class="input-action"><input id="masterPlaylistUrl" readonly type="text"><button class="button button-secondary" id="copyPlaylistUrl" type="button">Copy</button></div></label>
+<button class="button button-secondary button-block" id="watchMasterPlaylist" type="button">Watch playlist</button>
 </div>
 </article>
 </div>
 <article class="panel channel-panel">
-<div class="panel-header"><div><h3>Channel library</h3><p>Monitor, watch, copy, stop, or remove hosted channels.</p></div><button class="button button-secondary" id="refreshChannels" type="button">Refresh</button></div>
-<div class="empty-state" id="channelsEmpty">No channels have been added.</div>
+<div class="panel-header"><div><h2>Channels</h2><p>Manage generated endpoints.</p></div><button class="button button-secondary" id="refreshChannels" type="button">Refresh</button></div>
+<div class="empty-state" id="channelsEmpty">No channels yet.</div>
 <div class="channel-list" id="channelList"></div>
 </article>
 </section>
-<section aria-label="M3U player" class="page-section workspace-section" hidden="" id="player">
+<section class="page-section workspace-section" id="playlist-tools" aria-label="Playlist download" hidden>
 <div class="section-header">
-<div><span class="section-kicker">Watch</span><h2>Watch M3U streams</h2></div>
-<span class="status-badge" id="playerStatus">Ready</span>
+<div><span class="section-kicker">Download</span><h1>Prepare a playlist</h1><p>Import, inspect, correct, and save an M3U or M3U8 file.</p></div>
+<span class="status-badge" id="resultState">No playlist loaded</span>
 </div>
-<div class="player-grid">
-<article class="panel player-controls-panel">
-<div class="panel-header"><div><h3>Open a playlist</h3><p>Load an M3U playlist or play an M3U8 stream directly.</p></div></div>
+<div class="download-layout">
+<article class="panel source-card">
+<div class="panel-header"><div><h2>Import</h2><p>Open a file, fetch a URL, or paste playlist text.</p></div><div class="button-row"><button class="button button-quiet" id="sampleButton" type="button">Sample</button><button class="button button-quiet danger" id="clearButton" type="button">Clear</button></div></div>
 <div class="panel-body form-stack">
-<label class="field"><span>M3U or M3U8 URL</span><div class="input-action"><input id="playerUrl" inputmode="url" placeholder="https://example.com/playlist.m3u" type="url"/><button class="button button-primary" id="loadPlayerUrl" type="button">Load</button></div></label>
-<label class="field"><span>Channel</span><select disabled="" id="playerChannel"><option value="">Load a playlist first</option></select></label>
-<div class="button-row">
-<button class="button button-primary" disabled="" id="playSelectedChannel" type="button">Play</button>
-<button class="button button-secondary" disabled="" id="stopPlayer" type="button">Stop</button>
+<div class="segmented-control" role="tablist" aria-label="Playlist source">
+<button class="segment active" id="fileTab" aria-controls="filePanel" aria-selected="true" role="tab" type="button">File</button>
+<button class="segment" id="urlTab" aria-controls="urlPanel" aria-selected="false" role="tab" type="button">URL</button>
+<button class="segment" id="pasteTab" aria-controls="pastePanel" aria-selected="false" role="tab" type="button">Paste</button>
 </div>
-<p class="helper-text" id="playerMessage">Paste a direct M3U or M3U8 URL to begin.</p>
+<div class="source-panel" id="filePanel" aria-labelledby="fileTab" role="tabpanel">
+<input id="fileInput" accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl" hidden type="file">
+<button class="drop-zone" id="dropZone" type="button"><strong>Choose or drop a playlist</strong><span>M3U and M3U8 files up to 10 MB</span></button>
 </div>
-</article>
-<article class="panel video-panel">
-<div class="video-frame">
-<video controls="" id="videoPlayer" playsinline=""></video>
-<div class="video-placeholder" id="videoPlaceholder"><strong>No stream selected</strong><span>Your selected channel will play here.</span></div>
-</div>
-<div class="now-playing"><span>Now playing</span><strong id="nowPlaying">Nothing selected</strong></div>
-</article>
-</div>
-</section>
-<section aria-label="M3U editor" class="page-section workspace-section" hidden="" id="playlist-tools">
-<div class="section-header">
-<div><span class="section-kicker">Download</span><h2>Correct and download</h2></div>
-<span class="status-badge" id="resultState">Waiting for a playlist</span>
-</div>
-<article class="panel workspace">
-<div class="workspace-toolbar">
-<div aria-label="Playlist source" class="segmented-control" role="tablist">
-<button aria-controls="filePanel" aria-selected="true" class="segment active" id="fileTab" role="tab" type="button">Local file</button>
-<button aria-controls="urlPanel" aria-selected="false" class="segment" id="urlTab" role="tab" type="button">From URL</button>
-<button aria-controls="pastePanel" aria-selected="false" class="segment" id="pasteTab" role="tab" type="button">Paste text</button>
-</div>
-<div class="button-row">
-<button class="button button-secondary" id="sampleButton" type="button">Load sample</button>
-<button class="button button-danger" id="clearButton" type="button">Clear</button>
-</div>
-</div>
-<div aria-labelledby="fileTab" class="source-panel" id="filePanel" role="tabpanel">
-<input accept=".m3u,.m3u8,audio/x-mpegurl,application/vnd.apple.mpegurl" hidden="" id="fileInput" type="file"/>
-<button class="drop-zone" id="dropZone" type="button"><strong>Choose or drop an M3U file</strong><span>M3U and M3U8 files up to 10 MB</span></button>
-</div>
-<div aria-labelledby="urlTab" class="source-panel" hidden="" id="urlPanel" role="tabpanel">
+<div class="source-panel" id="urlPanel" aria-labelledby="urlTab" role="tabpanel" hidden>
 <form class="form-stack" id="urlForm">
-<label class="field"><span>Direct playlist URL</span><div class="input-action"><input autocomplete="url" id="urlInput" inputmode="url" maxlength="2048" placeholder="https://example.com/playlist.m3u" type="url"/><button class="button button-primary" id="fetchButton" type="submit">Import</button></div></label>
+<label class="field"><span>Playlist URL</span><div class="input-action"><input id="urlInput" autocomplete="url" inputmode="url" maxlength="2048" placeholder="https://example.com/playlist.m3u" type="url"><button class="button button-primary" id="fetchButton" type="submit">Import</button></div></label>
 </form>
 </div>
-<div aria-labelledby="pasteTab" class="source-panel" hidden="" id="pastePanel" role="tabpanel">
-<label class="field"><span>Playlist content</span><textarea id="playlistInput" placeholder="#EXTM3U
-#EXTINF:-1,Example channel
-https://example.com/stream.m3u8" spellcheck="false"></textarea></label>
+<div class="source-panel" id="pastePanel" aria-labelledby="pasteTab" role="tabpanel" hidden>
+<label class="field"><span>Playlist content</span><textarea id="playlistInput" spellcheck="false" placeholder="#EXTM3U&#10;#EXTINF:-1,Example channel&#10;https://example.com/stream.m3u8"></textarea></label>
 </div>
-<div class="file-summary" hidden="" id="fileSummary"><div><span class="file-type">M3U</span><span><strong id="fileName">playlist.m3u</strong><small id="fileSize">0 KB</small></span></div><button aria-label="Remove loaded file" class="icon-button" id="removeFileButton" type="button">×</button></div>
-<div class="options-grid">
-<label class="option-card"><input checked="" id="ensureHeader" type="checkbox"/><span><strong>Ensure header</strong><small>Add one valid #EXTM3U header</small></span></label>
-<label class="option-card"><input checked="" id="repairMetadata" type="checkbox"/><span><strong>Repair metadata</strong><small>Fix incomplete #EXTINF records</small></span></label>
-<label class="option-card"><input checked="" id="addMissingMetadata" type="checkbox"/><span><strong>Add missing entries</strong><small>Create metadata for bare locations</small></span></label>
-<label class="option-card"><input checked="" id="removeDuplicates" type="checkbox"/><span><strong>Remove duplicates</strong><small>Keep the first matching location</small></span></label>
-<label class="option-card"><input checked="" id="removeEmptyLines" type="checkbox"/><span><strong>Compact output</strong><small>Remove unnecessary blank lines</small></span></label>
-<label class="option-card"><input checked="" id="trimLines" type="checkbox"/><span><strong>Trim whitespace</strong><small>Clean leading and trailing spaces</small></span></label>
+<div class="file-summary" id="fileSummary" hidden><div><span class="file-type">M3U</span><span><strong id="fileName">playlist.m3u</strong><small id="fileSize">0 KB</small></span></div><button class="icon-button" id="removeFileButton" aria-label="Remove loaded file" type="button">×</button></div>
 </div>
-<div class="workspace-actions"><button class="button button-secondary" id="analyzeButton" type="button">Analyze</button><button class="button button-primary" id="repairButton" type="button">Correct playlist</button><button class="button button-primary" disabled="" id="downloadButton" type="button">Download M3U</button></div>
 </article>
+<article class="panel settings-card">
+<div class="panel-header"><div><h2>Correction settings</h2><p>Choose what Navuryx should clean.</p></div></div>
+<div class="panel-body">
+<div class="options-list">
+<label class="option-row"><span><strong>Valid header</strong><small>Ensure one #EXTM3U header</small></span><input checked id="ensureHeader" type="checkbox"></label>
+<label class="option-row"><span><strong>Metadata</strong><small>Normalize incomplete #EXTINF entries</small></span><input checked id="repairMetadata" type="checkbox"></label>
+<label class="option-row"><span><strong>Bare URLs</strong><small>Create metadata where it is missing</small></span><input checked id="addMissingMetadata" type="checkbox"></label>
+<label class="option-row"><span><strong>Duplicates</strong><small>Keep only the first matching URL</small></span><input checked id="removeDuplicates" type="checkbox"></label>
+<label class="option-row"><span><strong>Blank lines</strong><small>Remove unnecessary spacing</small></span><input checked id="removeEmptyLines" type="checkbox"></label>
+<label class="option-row"><span><strong>Whitespace</strong><small>Trim each line</small></span><input checked id="trimLines" type="checkbox"></label>
+</div>
+</div>
+</article>
+</div>
+<div class="download-action-bar">
+<div><strong id="downloadFileLabel">playlist.m3u</strong><span>Analyze first, then correct and download.</span></div>
+<div class="button-row"><button class="button button-secondary" id="analyzeButton" type="button">Analyze</button><button class="button button-primary" id="repairButton" type="button">Correct</button><button class="button button-success" id="downloadButton" disabled type="button">Download</button></div>
+</div>
 <div class="stats-grid">
 <article class="stat-card"><span>Entries</span><strong id="entryCount">0</strong></article>
 <article class="stat-card"><span>Issues</span><strong id="issueCount">0</strong></article>
@@ -144,16 +122,42 @@ https://example.com/stream.m3u8" spellcheck="false"></textarea></label>
 <article class="stat-card"><span>Groups</span><strong id="groupCount">0</strong></article>
 </div>
 <div class="results-grid">
-<article class="panel report-card"><div class="panel-header"><div><h3>Issues</h3></div><span class="count-badge" id="issueBadge">0 found</span></div><div class="empty-state" id="issuesEmpty">Analyze a playlist to see validation results.</div><ul class="issue-list" id="issueList"></ul></article>
-<article class="panel report-card"><div class="panel-header"><div><h3>Entry preview</h3></div><label class="search-field"><span class="sr-only">Search entries</span><input disabled="" id="entrySearch" placeholder="Search entries" type="search"/></label></div><div class="empty-state" id="previewEmpty">Playlist entries will appear here.</div><div class="table-wrap" hidden="" id="previewTableWrap"><table><thead><tr><th>Name</th><th>Group</th><th>Location</th></tr></thead><tbody id="previewBody"></tbody></table></div></article>
+<article class="panel report-card"><div class="panel-header"><div><h2>Issues</h2></div><span class="count-badge" id="issueBadge">0 found</span></div><div class="empty-state" id="issuesEmpty">Analyze a playlist to see validation results.</div><ul class="issue-list" id="issueList"></ul></article>
+<article class="panel report-card"><div class="panel-header"><div><h2>Entries</h2></div><label class="search-field"><span class="sr-only">Search entries</span><input id="entrySearch" disabled placeholder="Search" type="search"></label></div><div class="empty-state" id="previewEmpty">Playlist entries will appear here.</div><div class="table-wrap" id="previewTableWrap" hidden><table><thead><tr><th>Name</th><th>Group</th><th>Location</th></tr></thead><tbody id="previewBody"></tbody></table></div></article>
 </div>
-<article class="panel output-panel" hidden="" id="outputSection"><div class="panel-header"><div><h3>Corrected output</h3><p>Review the generated playlist before downloading.</p></div><button class="button button-secondary" id="copyButton" type="button">Copy output</button></div><div class="panel-body"><textarea aria-label="Corrected playlist output" id="playlistOutput" spellcheck="false"></textarea></div></article>
+<article class="panel output-panel" id="outputSection" hidden><div class="panel-header"><div><h2>Corrected playlist</h2><p>Review or copy the generated output.</p></div><button class="button button-secondary" id="copyButton" type="button">Copy</button></div><div class="panel-body"><textarea id="playlistOutput" aria-label="Corrected playlist output" spellcheck="false"></textarea></div></article>
+</section>
+<section class="page-section workspace-section" id="player" aria-label="Media player" hidden>
+<div class="section-header">
+<div><span class="section-kicker">Watch</span><h1>Watch a stream</h1><p>Open an M3U playlist, HLS stream, video file URL, YouTube video, or Twitch channel.</p></div>
+<span class="status-badge" id="playerStatus" hidden></span>
+</div>
+<div class="player-grid">
+<article class="panel player-controls-panel">
+<div class="panel-header"><div><h2>Open URL</h2><p>M3U, M3U8, MP4, WebM, YouTube, or Twitch.</p></div></div>
+<div class="panel-body form-stack">
+<label class="field"><span>Media URL</span><div class="input-action"><input id="playerUrl" inputmode="url" placeholder="https://example.com/playlist.m3u" type="url"><button class="button button-primary" id="loadPlayerUrl" type="button">Open</button></div></label>
+<label class="field"><span>Channel</span><select id="playerChannel" disabled><option value="">Open a playlist first</option></select></label>
+<div class="button-row"><button class="button button-primary" id="playSelectedChannel" disabled type="button">Play</button><button class="button button-secondary" id="stopPlayer" disabled type="button">Stop</button></div>
+<p class="field-note" id="playerMessage">Paste a media URL to begin.</p>
+</div>
+</article>
+<article class="panel video-panel">
+<div class="video-frame">
+<video id="videoPlayer" controls playsinline></video>
+<iframe id="sitePlayer" title="Web video player" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen hidden></iframe>
+<div class="video-placeholder" id="videoPlaceholder"><strong>No media selected</strong><span>The selected stream will play here.</span></div>
+</div>
+<div class="now-playing"><span>Now playing</span><strong id="nowPlaying">Nothing selected</strong></div>
+</article>
+</div>
 </section>
 </main>
-<footer><span>Navuryx M3U Tool</span><span>Use media and streams you are authorized to access.</span></footer>
-<div aria-live="polite" class="toast" id="toast" role="status"></div>
+<footer><span>Navuryx M3U Tool</span><span>Use authorized media sources.</span></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
-<script src="js/navigation.js"></script><script src="js/m3u.js"></script>
+<script src="js/navigation.js"></script>
+<script src="js/m3u.js"></script>
 <script src="js/app.js"></script>
 <script src="js/streaming.js"></script>
 <script src="js/player.js"></script>

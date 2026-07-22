@@ -31,6 +31,7 @@
     analyzeButton: document.getElementById("analyzeButton"),
     repairButton: document.getElementById("repairButton"),
     downloadButton: document.getElementById("downloadButton"),
+    downloadFileLabel: document.getElementById("downloadFileLabel"),
     copyButton: document.getElementById("copyButton"),
     outputSection: document.getElementById("outputSection"),
     resultState: document.getElementById("resultState"),
@@ -105,6 +106,7 @@
     elements.downloadButton.disabled = true;
     elements.outputSection.hidden = true;
     elements.fileName.textContent = state.fileName;
+    elements.downloadFileLabel.textContent = safeFileName(state.fileName);
     elements.fileSize.textContent = formatBytes(size || new Blob([state.sourceText]).size);
     elements.fileSummary.hidden = false;
     void runAnalysis(false);
@@ -122,6 +124,7 @@
     elements.fileSummary.hidden = true;
     elements.outputSection.hidden = true;
     elements.downloadButton.disabled = true;
+    elements.downloadFileLabel.textContent = "playlist.m3u";
     renderAnalysis(null);
     showToast("Workspace cleared");
   }
@@ -181,7 +184,7 @@
     elements.duplicateCount.textContent = String(hasAnalysis ? analysis.duplicates : 0);
     elements.groupCount.textContent = String(hasAnalysis ? analysis.groups : 0);
     elements.issueBadge.textContent = `${issues.length} found`;
-    elements.resultState.textContent = !hasAnalysis ? "Waiting for a playlist" : issues.length ? "Needs attention" : "Healthy playlist";
+    elements.resultState.textContent = !hasAnalysis ? "No playlist loaded" : issues.length ? "Needs attention" : "Ready to download";
     elements.resultState.classList.toggle("warning", hasAnalysis && issues.length > 0);
     elements.resultState.classList.toggle("good", hasAnalysis && issues.length === 0);
     elements.issuesEmpty.textContent = hasAnalysis ? "No issues found in this playlist." : "Analyze a playlist to see validation results.";

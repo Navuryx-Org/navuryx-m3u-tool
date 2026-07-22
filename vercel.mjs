@@ -7,6 +7,7 @@ const rewrites = origin ? [
   { source: "/:channel/:segment.mp4", destination: `${origin}/:channel/:segment.mp4` },
   { source: "/api/player/playlist", destination: "/api/bridge?path=player/playlist" },
   { source: "/api/status", destination: "/api/bridge?path=status" },
+  { source: "/api/source-metadata", destination: "/api/bridge?path=source-metadata" },
   { source: "/api/channels", destination: "/api/bridge?path=channels" },
   { source: "/api/channels/:path*", destination: "/api/bridge?path=channels/:path*" }
 ] : [];

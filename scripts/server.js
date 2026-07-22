@@ -17,6 +17,8 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "0.0.0.0";
 const maxUploadBytes = Number(process.env.NAVURYX_MAX_UPLOAD_BYTES || 20 * 1024 * 1024 * 1024);
 const ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
+const toolsRoot = path.join(dataRoot, "tools");
+const configuredYtDlpPath = String(process.env.NAVURYX_YTDLP_PATH || "").trim();
 const allowedOrigin = String(process.env.NAVURYX_ALLOWED_ORIGIN || "https://navuryx-m3u-tool.vercel.app").trim();
 const processes = new Map();
 const logs = new Map();
@@ -72,10 +74,144 @@ function preferredAddress() {
 
 fs.mkdirSync(uploadsRoot, { recursive: true });
 fs.mkdirSync(hlsRoot, { recursive: true });
+fs.mkdirSync(toolsRoot, { recursive: true });
 
 function ffmpegAvailable() {
   const result = spawnSync(ffmpegPath, ["-version"], { stdio: "ignore" });
   return result.status === 0;
+}
+
+function commandWorks(command, args) {
+  if (!command) {
+    return false;
+  }
+  const result = spawnSync(command, args, { stdio: "ignore", windowsHide: true });
+  return result.status === 0;
+}
+
+function ytDlpAsset() {
+  if (process.platform === "win32") {
+    return { name: "yt-dlp.exe", url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" };
+  }
+  if (process.platform === "darwin") {
+    return { name: "yt-dlp_macos", url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos" };
+  }
+  if (process.platform === "linux" && process.arch === "arm64") {
+    return { name: "yt-dlp_linux_aarch64", url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64" };
+  }
+  if (process.platform === "linux") {
+    return { name: "yt-dlp_linux", url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux" };
+  }
+  return { name: "yt-dlp", url: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" };
+}
+
+let ytDlpPromise = null;
+
+async function ensureYtDlp() {
+  if (configuredYtDlpPath && commandWorks(configuredYtDlpPath, ["--version"])) {
+    return configuredYtDlpPath;
+  }
+  if (commandWorks("yt-dlp", ["--version"])) {
+    return "yt-dlp";
+  }
+  const asset = ytDlpAsset();
+  const target = path.join(toolsRoot, asset.name);
+  if (commandWorks(target, ["--version"])) {
+    return target;
+  }
+  if (!ytDlpPromise) {
+    ytDlpPromise = (async () => {
+      const temporary = `${target}.download`;
+      let response;
+      try {
+        response = await fetch(asset.url, { redirect: "follow", signal: AbortSignal.timeout(120000) });
+      } catch {
+        throw new Error("The site resolver could not be downloaded");
+      }
+      if (!response.ok) {
+        throw new Error(`The site resolver download failed with status ${response.status}`);
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length < 1024 * 1024) {
+        throw new Error("The site resolver download was incomplete");
+      }
+      fs.writeFileSync(temporary, bytes);
+      if (process.platform !== "win32") {
+        fs.chmodSync(temporary, 0o755);
+      }
+      fs.rmSync(target, { force: true });
+      fs.renameSync(temporary, target);
+      if (!commandWorks(target, ["--version"])) {
+        throw new Error("The site resolver could not be started");
+      }
+      return target;
+    })().finally(() => {
+      ytDlpPromise = null;
+    });
+  }
+  return ytDlpPromise;
+}
+
+function runCommand(command, args, timeout) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const stdout = [];
+    const stderr = [];
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        child.kill("SIGTERM");
+        settled = true;
+        reject(new Error("The site resolver timed out"));
+      }
+    }, timeout || 90000);
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+    child.on("exit", (code) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      const output = Buffer.concat(stdout).toString("utf8").trim();
+      const detail = Buffer.concat(stderr).toString("utf8").trim();
+      if (code === 0) {
+        resolve(output);
+      } else {
+        reject(new Error(detail || `The site resolver exited with code ${code}`));
+      }
+    });
+  });
+}
+
+async function resolveSiteSource(value) {
+  const source = validateWebUrl(value);
+  const executable = await ensureYtDlp();
+  const output = await runCommand(executable, ["--no-playlist", "--no-warnings", "--dump-single-json", "--format", "best", source], 120000);
+  let metadata;
+  try {
+    metadata = JSON.parse(output);
+  } catch {
+    throw new Error("The site resolver returned invalid media information");
+  }
+  const mediaUrl = String(metadata.url || "").trim();
+  if (!mediaUrl) {
+    throw new Error("The site did not provide a playable media URL");
+  }
+  return {
+    source,
+    mediaUrl,
+    title: sanitizeText(metadata.title, automaticNameFromUrl(source), 120),
+    isLive: Boolean(metadata.is_live || metadata.live_status === "is_live"),
+    headers: metadata.http_headers && typeof metadata.http_headers === "object" ? metadata.http_headers : {}
+  };
 }
 
 function sanitizeText(value, fallback, maxLength) {
@@ -89,6 +225,59 @@ function slugify(value) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || "channel";
+}
+
+function titleCase(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .trim();
+}
+
+function automaticNameFromUrl(value) {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const youtubeId = host === "youtu.be" ? parts[0] : host.endsWith("youtube.com") ? parsed.searchParams.get("v") || parts.at(-1) : "";
+    if (youtubeId) {
+      return `YouTube ${youtubeId}`;
+    }
+    if (host.endsWith("twitch.tv")) {
+      return titleCase(parts[0] || "Twitch Stream");
+    }
+    const file = decodeURIComponent(parts.at(-1) || "").replace(/\.[a-z0-9]{2,6}$/i, "");
+    return titleCase(file || host.split(".")[0] || "Channel");
+  } catch {
+    return "Channel";
+  }
+}
+
+function validateWebUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value || "").trim());
+  } catch {
+    throw new Error("Enter a valid website URL");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error("Use an HTTP or HTTPS website URL without embedded credentials");
+  }
+  return parsed.toString();
+}
+
+function directMediaInput(value) {
+  try {
+    const parsed = new URL(value);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return true;
+    }
+    const extension = path.extname(parsed.pathname).toLowerCase();
+    return new Set([".m3u8", ".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi", ".ts", ".m2ts", ".mpd"]).has(extension);
+  } catch {
+    return false;
+  }
 }
 
 function escapeM3u(value) {
@@ -109,6 +298,7 @@ function loadChannels() {
         name: sanitizeText(channel.name, "Untitled channel", 120),
         group: sanitizeText(channel.group, "Navuryx", 80),
         kind: isFile ? "file" : "live",
+        resolver: channel.resolver === "ytdlp" ? "ytdlp" : "direct",
         source: String(channel.source || ""),
         status: isFile && fs.existsSync(indexPath) ? "ready" : "stopped",
         createdAt: String(channel.createdAt || new Date().toISOString()),
@@ -154,7 +344,7 @@ function publicChannel(channel, request) {
   const base = getAdvertisedBaseUrl(request);
   return {
     ...channel,
-    source: channel.kind === "file" ? path.basename(channel.source) : "Authorized live input",
+    source: channel.kind === "file" && channel.resolver === "direct" ? path.basename(channel.source) : channel.resolver === "ytdlp" ? "Site URL" : "Direct input",
     hlsUrl: `${base}/${encodeURIComponent(channel.id)}/index.m3u8`,
     log: logs.get(channel.id) || []
   };
@@ -193,7 +383,7 @@ function sendHeaders(response, status, type, extra) {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' http: https:; media-src 'self' http: https: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' http: https:; media-src 'self' http: https: blob:; object-src 'none'; base-uri 'none'; frame-src https://player.twitch.tv https://clips.twitch.tv https://www.youtube.com https://www.youtube-nocookie.com; frame-ancestors 'none'",
     ...(extra || {})
   });
 }
@@ -272,7 +462,7 @@ function writeUpload(request, targetPath) {
   });
 }
 
-function createChannel(name, group, kind, source) {
+function createChannel(name, group, kind, source, resolver) {
   const base = slugify(name);
   const id = `${base}-${crypto.randomBytes(4).toString("hex")}`;
   const channel = {
@@ -280,6 +470,7 @@ function createChannel(name, group, kind, source) {
     name: sanitizeText(name, "Untitled channel", 120),
     group: sanitizeText(group, "Navuryx", 80),
     kind,
+    resolver: resolver === "ytdlp" ? "ytdlp" : "direct",
     source,
     status: "starting",
     createdAt: new Date().toISOString(),
@@ -291,7 +482,7 @@ function createChannel(name, group, kind, source) {
   return channel;
 }
 
-function hlsArguments(channel, outputDirectory) {
+function hlsArguments(channel, outputDirectory, inputSource) {
   const output = path.join(outputDirectory, "index.m3u8");
   const segmentPattern = path.join(outputDirectory, "segment-%06d.ts");
   const common = [
@@ -300,7 +491,7 @@ function hlsArguments(channel, outputDirectory) {
     "warning",
     "-y",
     "-i",
-    channel.source,
+    inputSource,
     "-map",
     "0:v:0?",
     "-map",
@@ -338,20 +529,47 @@ function hlsArguments(channel, outputDirectory) {
   ]);
 }
 
-function startFfmpeg(channel) {
+async function startFfmpeg(channel, preparedSource) {
   if (!ffmpegAvailable()) {
-    updateChannel(channel.id, { status: "failed", error: "FFmpeg was not found. Install FFmpeg and restart Navuryx." });
+    updateChannel(channel.id, { status: "failed", error: "The streaming engine is unavailable" });
     return;
   }
   const outputDirectory = path.join(hlsRoot, channel.id);
   fs.rmSync(outputDirectory, { recursive: true, force: true });
   fs.mkdirSync(outputDirectory, { recursive: true });
   logs.set(channel.id, []);
-  const child = spawn(ffmpegPath, hlsArguments(channel, outputDirectory), {
+  let inputSource = channel.source;
+  let inputHeaders = {};
+  if (channel.resolver === "ytdlp") {
+    updateChannel(channel.id, { status: "starting", error: "" });
+    try {
+      const resolved = preparedSource || await resolveSiteSource(channel.source);
+      inputSource = resolved.mediaUrl;
+      inputHeaders = resolved.headers;
+      if (resolved.title && (!channel.name || /^YouTube |^Channel$/i.test(channel.name))) {
+        channel.name = resolved.title;
+      }
+      channel.kind = resolved.isLive ? "live" : "file";
+      updateChannel(channel.id, { name: channel.name, kind: channel.kind, status: channel.kind === "file" ? "processing" : "starting", error: "" });
+    } catch (error) {
+      appendLog(channel.id, error.message || String(error));
+      updateChannel(channel.id, { status: "failed", error: error.message || "The site URL could not be resolved" });
+      return;
+    }
+  }
+  const args = hlsArguments(channel, outputDirectory, inputSource);
+  const userAgent = String(inputHeaders["User-Agent"] || inputHeaders["user-agent"] || "").trim();
+  if (userAgent) {
+    const inputIndex = args.indexOf("-i");
+    if (inputIndex >= 0) {
+      args.splice(inputIndex, 0, "-user_agent", userAgent);
+    }
+  }
+  const child = spawn(ffmpegPath, args, {
     windowsHide: true,
     stdio: ["ignore", "ignore", "pipe"]
   });
-  processes.set(channel.id, child);
+  processes.set(channel.id, { ffmpeg: child });
   updateChannel(channel.id, { status: channel.kind === "file" ? "processing" : "starting", error: "" });
   let readyObserved = false;
   const readyTimer = setInterval(() => {
@@ -368,7 +586,7 @@ function startFfmpeg(channel) {
     clearInterval(readyTimer);
     processes.delete(channel.id);
     appendLog(channel.id, error.message);
-    updateChannel(channel.id, { status: "failed", error: "FFmpeg could not be started" });
+    updateChannel(channel.id, { status: "failed", error: "The streaming engine could not be started" });
   });
   child.on("exit", (code, signal) => {
     clearInterval(readyTimer);
@@ -381,10 +599,11 @@ function startFfmpeg(channel) {
       updateChannel(channel.id, { status: "ready", error: "" });
       return;
     }
-    const detail = (logs.get(channel.id) || []).slice(-1)[0] || `FFmpeg exited with code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}`;
+    const detail = (logs.get(channel.id) || []).slice(-1)[0] || `Streaming process exited with code ${code ?? "unknown"}${signal ? ` (${signal})` : ""}`;
     updateChannel(channel.id, { status: readyObserved ? "stopped" : "failed", error: detail });
   });
 }
+
 
 function validateLiveUrl(value) {
   let parsed;
@@ -403,10 +622,20 @@ function validateLiveUrl(value) {
   return parsed.toString();
 }
 
+
+function remoteVideoFileUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return new Set([".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi"]).has(path.extname(parsed.pathname).toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function stopChannel(id) {
-  const child = processes.get(id);
-  if (child) {
-    child.kill("SIGTERM");
+  const running = processes.get(id);
+  if (running) {
+    running.ffmpeg.kill("SIGTERM");
     processes.delete(id);
   }
   return updateChannel(id, { status: "stopped", error: "" });
@@ -519,6 +748,20 @@ async function handleApi(request, response, pathname, parsedUrl) {
     }
     return true;
   }
+  if (pathname === "/api/source-metadata" && request.method === "GET") {
+    try {
+      const source = validateLiveUrl(parsedUrl.searchParams.get("url"));
+      if (directMediaInput(source)) {
+        sendJson(response, 200, { title: automaticNameFromUrl(source), resolver: "direct", live: !remoteVideoFileUrl(source) });
+      } else {
+        const metadata = await resolveSiteSource(source);
+        sendJson(response, 200, { title: metadata.title, resolver: "ytdlp", live: metadata.isLive });
+      }
+    } catch (error) {
+      sendJson(response, 400, { error: error.message || "The source could not be inspected" });
+    }
+    return true;
+  }
   if (pathname === "/api/status" && request.method === "GET") {
     sendJson(response, 200, {
       ffmpeg: ffmpegAvailable(),
@@ -539,9 +782,10 @@ async function handleApi(request, response, pathname, parsedUrl) {
       sendJson(response, 503, { error: "FFmpeg is required to create HLS streams" });
       return true;
     }
-    const name = sanitizeText(parsedUrl.searchParams.get("name"), "Uploaded channel", 120);
+    const requestedName = String(parsedUrl.searchParams.get("name") || "").trim();
     const group = sanitizeText(parsedUrl.searchParams.get("group"), "Navuryx", 80);
     const suppliedName = sanitizeText(request.headers["x-file-name"], "media.mp4", 180);
+    const name = sanitizeText(requestedName, titleCase(path.basename(suppliedName, path.extname(suppliedName))) || "Uploaded channel", 120);
     const extension = path.extname(suppliedName).toLowerCase();
     if (!mediaExtensions.has(extension)) {
       sendJson(response, 400, { error: "Upload a supported video file" });
@@ -555,8 +799,8 @@ async function handleApi(request, response, pathname, parsedUrl) {
         fs.rmSync(target, { force: true });
         throw new Error("The uploaded file is empty");
       }
-      const channel = createChannel(name, group, "file", target);
-      startFfmpeg(channel);
+      const channel = createChannel(name, group, "file", target, "direct");
+      await startFfmpeg(channel);
       sendJson(response, 202, { channel: publicChannel(channel, request), playlistUrl: `${getAdvertisedBaseUrl(request)}/playlist.m3u` });
     } catch (error) {
       fs.rmSync(target, { force: true });
@@ -571,11 +815,21 @@ async function handleApi(request, response, pathname, parsedUrl) {
     }
     try {
       const body = await readJson(request, 64 * 1024);
-      const name = sanitizeText(body.name, "Live channel", 120);
-      const group = sanitizeText(body.group, "Navuryx", 80);
       const source = validateLiveUrl(body.sourceUrl);
-      const channel = createChannel(name, group, "live", source);
-      startFfmpeg(channel);
+      const group = sanitizeText(body.group, "Navuryx", 80);
+      const resolver = directMediaInput(source) ? "direct" : "ytdlp";
+      let preparedSource = null;
+      let title = automaticNameFromUrl(source);
+      let kind = remoteVideoFileUrl(source) ? "file" : "live";
+      if (resolver === "ytdlp") {
+        preparedSource = await resolveSiteSource(source);
+        title = preparedSource.title || title;
+        kind = preparedSource.isLive ? "live" : "file";
+      }
+      const requestedName = body.nameAuto === false ? body.name : "";
+      const name = sanitizeText(requestedName, title || "Channel", 120);
+      const channel = createChannel(name, group, kind, source, resolver);
+      await startFfmpeg(channel, preparedSource);
       sendJson(response, 202, { channel: publicChannel(channel, request), playlistUrl: `${getAdvertisedBaseUrl(request)}/playlist.m3u` });
     } catch (error) {
       sendJson(response, 400, { error: error.message || "The live input could not be added" });
@@ -593,7 +847,7 @@ async function handleApi(request, response, pathname, parsedUrl) {
       stopChannel(channel.id);
     } else {
       stopChannel(channel.id);
-      startFfmpeg(channel);
+      await startFfmpeg(channel);
     }
     sendJson(response, 200, { channel: publicChannel(channel, request) });
     return true;
@@ -657,8 +911,8 @@ const server = http.createServer(async (request, response) => {
 });
 
 function shutdown() {
-  for (const child of processes.values()) {
-    child.kill("SIGTERM");
+  for (const running of processes.values()) {
+    running.ffmpeg.kill("SIGTERM");
   }
   processes.clear();
   server.close(() => process.exit(0));
