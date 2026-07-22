@@ -218,12 +218,12 @@
       return;
     }
     const url = new URL("/playlist.m3u", window.location.origin).toString();
-    document.getElementById("player").scrollIntoView({ behavior: "smooth", block: "start" });
+    window.dispatchEvent(new CustomEvent("navuryx:navigate", { detail: { section: "player" } }));
     void loadPlaylistUrl(url);
   });
   window.addEventListener("navuryx:play", (event) => {
     const detail = event.detail || {};
-    document.getElementById("player").scrollIntoView({ behavior: "smooth", block: "start" });
+    window.dispatchEvent(new CustomEvent("navuryx:navigate", { detail: { section: "player" } }));
     elements.url.value = detail.url || "";
     populate([{ name: detail.name || "Channel", group: detail.group || "", location: detail.url || "" }]);
     void playUrl(detail.url, detail.name);

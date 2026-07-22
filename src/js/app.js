@@ -387,13 +387,7 @@
     elements.entrySearch.addEventListener("input", () => renderEntries(state.analysis ? state.analysis.entries : []));
   }
 
-  function removeServiceWorkers() {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then((registrations) => registrations.forEach((registration) => registration.unregister())).catch(() => null);
-    }
-  }
 
   bindEvents();
   renderAnalysis(null);
-  removeServiceWorkers();
 })();

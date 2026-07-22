@@ -32,8 +32,10 @@ a { color: inherit; text-decoration: none; }
 .brand-copy strong { font-size: 15px; letter-spacing: 0.02em; }
 .brand-copy small { margin-top: 4px; color: var(--muted); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
 .main-nav { display: flex; align-items: center; gap: 4px; }
-.main-nav a { padding: 9px 12px; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
-.main-nav a:hover { background: var(--surface-raised); color: var(--text); }
+.workspace-nav { padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-input); }
+.workspace-nav-button { min-height: 36px; padding: 0 17px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 750; }
+.workspace-nav-button:hover { color: var(--text); }
+.workspace-nav-button.active { background: var(--accent); color: white; }
 .host-status { padding: 7px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 11px; }
 
 main, footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
@@ -163,7 +165,7 @@ footer { display: flex; justify-content: space-between; gap: 20px; padding: 58px
 [hidden] { display: none !important; }
 
 @media (max-width: 900px) {
-  .main-nav, .host-status { display: none; }
+  .host-status { display: none; }
   .overview, .two-column-grid, .player-grid, .results-grid { grid-template-columns: 1fr; }
   .overview { gap: 28px; }
   .channel-item { grid-template-columns: 1fr; gap: 10px; }
@@ -183,4 +185,15 @@ footer { display: flex; justify-content: space-between; gap: 20px; padding: 58px
   .input-action .button { width: 100%; }
   .video-frame, .video-frame video { min-height: 230px; height: 230px; }
   .search-field { width: 100%; }
+}
+
+.workspace-section { padding-top: 36px; animation: section-in 150ms ease-out; }
+.workspace-section[hidden] { display: none !important; }
+@keyframes section-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 720px) {
+  .topbar-inner { min-height: auto; padding: 12px 0; flex-wrap: wrap; }
+  .brand { width: 100%; }
+  .workspace-nav { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .workspace-nav-button { padding: 0 8px; }
 }

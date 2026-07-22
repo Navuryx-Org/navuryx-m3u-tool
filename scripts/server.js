@@ -23,12 +23,11 @@ const logs = new Map();
 const publicFiles = new Set([
   "/index.html",
   "/css/styles.css",
+  "/js/navigation.js",
   "/js/m3u.js",
   "/js/app.js",
   "/js/streaming.js",
-  "/js/player.js",
-  "/assets/icons/icon-192.png",
-  "/assets/icons/icon-512.png"
+  "/js/player.js"
 ]);
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
